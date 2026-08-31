@@ -59,7 +59,7 @@ local function sCV()
         task.wait(0.02)
     end
     task.wait(0.1)
-    mousemoverel(0, 3000)
+    mousemoverel(0, 10000)
     task.wait(0.15)
     for i = 1, 8 do
         mousescroll(-1)
