@@ -2,50 +2,122 @@ loadstring(game:HttpGet("https://scripts.wabisabi.mom/wabi-sabi-ui-lib.lua"))()
 local lib = WabiSabi
 
 local plrs = game:GetService("Players")
-local ws = game:GetService("Workspace")
-local rs = game:GetService("RunService")
+local ws   = game:GetService("Workspace")
+local rs   = game:GetService("RunService")
+local uis  = game:GetService("UserInputService")
 
-while not plrs.LocalPlayer do
-    task.wait(0.1)
-end
+while not plrs.LocalPlayer do task.wait(0.1) end
 local lp = plrs.LocalPlayer
 
-local localPlot = nil
-local health_offset = 0x190
+local localPlot        = nil
+local health_offset    = 0x190
+local fr               = false  
+local pe               = true   
+local tmf              = false  
+local ft               = nil    
+local gsz              = false  
+local ia               = false  
+local tr               = 6      
+local nc               = nil    
 
-local function gHum()
-    if not lp then return nil end
+local fb   = CFrame.new(541.99, 70.43, -368.12)   
+local mfp  = CFrame.new(544.35, 70.43, -413.09)   
+local SAFE = Vector3.new(528.04, 70.79, -364.74)  
+
+local lastTp       = 0
+
+local ragdollState  = false
+local storedJoints  = {}
+local camera        = workspace.CurrentCamera
+
+local function enR()
+    local myChar = lp.Character
+    if not myChar or not camera then return end
+    storedJoints = {}
+    for _, d in ipairs(myChar:GetDescendants()) do
+        if d:IsA("Motor6D") and d.Name ~= "RootJoint" and d.Name ~= "Root" then
+            table.insert(storedJoints, { joint = d, oldParent = d.Parent })
+            d.Parent = camera
+        end
+    end
+    ragdollState = true
+end
+
+local function dsR()
+    for _, item in ipairs(storedJoints) do
+        if item.joint and item.oldParent then
+            pcall(function() item.joint.Parent = item.oldParent end)
+        end
+    end
+    storedJoints = {}
+    ragdollState = false
+end
+
+local function sCV()
+    for i = 1, 25 do
+        mousescroll(1)
+        task.wait(0.02)
+    end
+    task.wait(0.1)
+    mousemoverel(0, 1200)
+    task.wait(0.15)
+    for i = 1, 8 do
+        mousescroll(-1)
+        task.wait(0.04)
+    end
+end
+
+local function isH()
     local char = lp.Character
-    if not char then return nil end
-    return char:FindFirstChildOfClass("Humanoid")
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local lh   = char:FindFirstChild("LeftHand")
+    local rh   = char:FindFirstChild("RightHand")
+    if not (root and lh and rh) then return false end
+    local ly = (lh.Position - root.Position).Y
+    local ry = (rh.Position - root.Position).Y
+    return ly > 0 and ry > 0
+end
+
+local function isR()
+    local char = lp.Character
+    if not char then return false end
+    for _, v in ipairs(char:GetDescendants()) do
+        if v.Name:find("Ragdoll") then return true end
+    end
+    return false
+end
+
+local function dTp(times, delay)
+    times = times or 3
+    delay = delay or 0.03
+    local p = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    if not p then return end
+    for i = 1, times do
+        p.CFrame = CFrame.new(SAFE.X, SAFE.Y, SAFE.Z)
+        task.wait(delay)
+    end
 end
 
 task.spawn(function()
     local plots = ws:WaitForChild("Plots", 30)
-    if not plots then
-        return
-    end
+    if not plots then return end
 
     while not lp.Character or not lp.Character:FindFirstChildOfClass("Humanoid") do
         task.wait(0.1)
     end
-    
+
     local oldChar = lp.Character
     local hum = oldChar:FindFirstChildOfClass("Humanoid")
     if hum and hum.Address then
         memory_write("float", hum.Address + health_offset, -10)
     end
 
-    while lp.Character == oldChar or not lp.Character do
-        task.wait(0.05)
-    end
+    while lp.Character == oldChar or not lp.Character do task.wait(0.05) end
 
     local newChar = lp.Character
     local hrp = newChar:WaitForChild("HumanoidRootPart", 10)
-    
-    if not hrp then
-        return
-    end
+    if not hrp then return end
 
     task.wait(0.6)
 
@@ -65,27 +137,15 @@ end)
 local w = lib:CreateWindow({
     Title    = "Steal An Egg",
     SubTitle = "AutoFarm",
-    Size     = Vector2.new(460, 420),
+    Size     = Vector2.new(460, 460),
     Resize   = true,
 })
 
 local tb = w:AddTab({ Title = "Farm", Icon = "egg" })
 
-local fr = false
-local pe = true
-local tmf = false
-local ft = nil
-local gsz = false
-local ia = false
-
-local fb = CFrame.new(541.99, 70.43, -368.12)
-local mfp = CFrame.new(544.35, 70.43, -413.09)
-
-local tr = 6
-
 local ss = tb:AddSlider({
     Id = "global_tween_speed", Title = "Movement Speed",
-    Min = 400, Max = 1000, Default = 800, Rounding = 0, Callback = function() end
+    Min = 400, Max = 2000, Default = 800, Rounding = 0, Callback = function() end
 })
 
 local hs = tb:AddSlider({
@@ -113,6 +173,56 @@ local tmToggle = tb:AddToggle({
     Callback = function(v) tmf = v end
 })
 
+local fastPickupEnabled = false
+
+local function pPr(prompt)
+    if not prompt then return end
+    local addr = prompt.Address
+    if not addr then return end
+    local curHold = memory_read("float", addr + 0x120)
+    if curHold and curHold > 0 then
+        memory_write("float", addr + 0x120, 0.0)
+    end
+    local curDist = memory_read("float", addr + 0x128)
+    if curDist and curDist < 18.0 then
+        memory_write("float", addr + 0x128, 18.0)
+    end
+end
+
+local function pAPs()
+    for _, c in ipairs(workspace:GetChildren()) do
+        if c.Name == "SmartPromptPart" then
+            for _, p in ipairs(c:GetChildren()) do
+                if p.ClassName == "ProximityPrompt" then
+                    pcall(pPr, p)
+                end
+            end
+        end
+    end
+end
+
+local fastPickupThread = nil
+
+tb:AddToggle({
+    Id = "fast_pickup_toggle",
+    Title = "Fast Pick Up",
+    Default = false,
+    Callback = function(v)
+        fastPickupEnabled = v
+        if v then
+            pAPs()
+            fastPickupThread = task.spawn(function()
+                while fastPickupEnabled do
+                    task.wait(2.0)
+                    pAPs()
+                end
+            end)
+        else
+            fastPickupEnabled = false
+        end
+    end
+})
+
 local function gSp()
     if not ss then return 800 end
     local v
@@ -122,11 +232,12 @@ local function gSp()
 end
 
 local function gHd()
-    if not hs then return 2.0 end
+    if fastPickupEnabled then return 0 end
+    if not hs then return 1.5 end
     local v
     if type(hs.Get) == "function" then v = hs.Get() end
     if not v and hs.Value then v = hs.Value end
-    return tonumber(v) or 2.0
+    return tonumber(v) or 1.5
 end
 
 local function gAf()
@@ -134,8 +245,6 @@ local function gAf()
     if type(aft.Get) == "function" then return aft.Get() end
     return aft.Value == true
 end
-
-local nc = nil
 
 local function sNc()
     if nc then nc:Disconnect() end
@@ -206,7 +315,7 @@ local function mv(tc, it, sr)
             return "INTERRUPTED"
         end
 
-        ch = lp.Character
+        ch  = lp.Character
         hrp = ch and ch:FindFirstChild("HumanoidRootPart")
         if not hrp then break end
 
@@ -218,7 +327,7 @@ local function mv(tc, it, sr)
 
         local dt = task.wait()
         if not sr() then break end
-        dt = tonumber(dt) or 0.016
+        dt  = tonumber(dt) or 0.016
         csp = gSp()
 
         local stp = csp * dt
@@ -235,7 +344,7 @@ local function mv(tc, it, sr)
 end
 
 local function mvs(tc, it, sr)
-    local ch = lp.Character
+    local ch  = lp.Character
     local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
 
@@ -243,7 +352,7 @@ local function mvs(tc, it, sr)
     if ap then
         local ok = mv(ap, it, sr)
         if not ok or ok == "INTERRUPTED" then return ok end
-        ch = lp.Character
+        ch  = lp.Character
         hrp = ch and ch:FindFirstChild("HumanoidRootPart")
         if hrp then
             local ap2 = gAp(hrp.Position, tc.Position)
@@ -259,16 +368,18 @@ end
 
 local function gSz()
     gsz = true
-    ia = true
+    ia  = true
+
     mv(fb, nil, function() return fr end)
+
     gsz = false
-    ia = false
+    ia  = false
 end
 
 local function gPe()
     local sl = ws:FindFirstChild("AreaEggSlotsClient")
     if not sl then return nil end
-    local ch = lp.Character
+    local ch  = lp.Character
     local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
 
@@ -292,8 +403,8 @@ local function gPe()
 end
 
 local function gSe()
-    local sp = Vector3.new(544.71, 70.43, -364.68)
-    local fp = nil
+    local sp  = Vector3.new(544.71, 70.43, -364.68)
+    local fp  = nil
     local mxd = -1
 
     local sl = ws:FindFirstChild("AreaEggSlotsClient")
@@ -305,7 +416,7 @@ local function gSe()
                     local dst = (pl.Position - sp).Magnitude
                     if dst > mxd then
                         mxd = dst
-                        fp = pl
+                        fp  = pl
                     end
                 end
             end
@@ -314,22 +425,18 @@ local function gSe()
     return fp
 end
 
-local function gTmPart()
+local function gTP()
     if not localPlot then return nil end
     local tmRender = ws:FindFirstChild("__ClientTreadmillRenders")
     if not tmRender then return nil end
     local render = tmRender:FindFirstChild("TreadmillRender_" .. tostring(localPlot.Name))
-    if render then
-        return render:FindFirstChild("BoundingBoxPart")
-    end
+    if render then return render:FindFirstChild("BoundingBoxPart") end
     return nil
 end
 
-local function eTm()
+local function eTP()
     pcall(function()
-        keypress(0x20)
-        task.wait(0.15)
-        keyrelease(0x20)
+        keypress(0x20); task.wait(0.15); keyrelease(0x20)
     end)
 end
 
@@ -368,9 +475,7 @@ local function dPe(ep)
     ia = true
 
     local ms = mvs(ep.CFrame,
-        function()
-            return not gsz and (gSe() ~= nil)
-        end,
+        function() return not gsz and (gSe() ~= nil) end,
         function() return fr and pe end
     )
 
@@ -390,7 +495,7 @@ local function dPe(ep)
 
     task.wait(0.3)
     if not ex(ep) then
-        local sl = ep.Parent and ep.Parent.Parent
+        local sl   = ep.Parent and ep.Parent.Parent
         local isSp = sl and sl:FindFirstChild("RareAreaEggHighlight") ~= nil
 
         if isSp or not gAf() then
@@ -419,10 +524,7 @@ local function sFl()
         local lastPeState = false
 
         while fr do
-            if gsz or ia then
-                task.wait(0.1)
-                continue
-            end
+            if gsz or ia then task.wait(0.1); continue end
 
             local act = false
 
@@ -456,9 +558,9 @@ local function sFl()
 
             if not act then
                 if tmf and localPlot then
-                    local tmPart = gTmPart()
+                    local tmPart = gTP()
                     if tmPart then
-                        local ch = lp.Character
+                        local ch  = lp.Character
                         local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
                         if hrp and (hrp.Position - tmPart.Position).Magnitude > 3 then
                             ia = true
@@ -466,14 +568,12 @@ local function sFl()
                                 return (gSe() ~= nil) or (pe and gPe() ~= nil)
                             end, function() return fr end)
                             ia = false
-                            if res == "INTERRUPTED" then
-                                continue
-                            end
+                            if res == "INTERRUPTED" then continue end
                         end
 
                         while fr and tmf do
                             if (gSe() ~= nil) or (pe and gPe() ~= nil) then
-                                eTm()
+                                eTP()
                                 task.wait(0.2)
                                 break
                             end
@@ -501,36 +601,49 @@ local function cFs(st, ui)
 
     if ui and mt then
         pcall(function()
-            if type(mt.Set) == "function" then
-                mt:Set(st)
-            elseif mt.Value ~= nil then
-                mt.Value = st
-            end
+            if type(mt.Set) == "function" then mt:Set(st)
+            elseif mt.Value ~= nil then mt.Value = st end
         end)
     end
 
     if st then
         lib:Notify({ Title = "Auto Farm", Content = "Auto Farm started!", Duration = 2 })
+        enR()  
+        task.spawn(sCV)
         sFl()
     else
         lib:Notify({ Title = "Auto Farm", Content = "Auto Farm stopped!", Duration = 2 })
+        dsR() 
         eNc()
     end
 end
 
 mt = tb:AddToggle({
     Id = "main_farm_toggle", Title = "Start Stop Auto Farm", Default = false,
-    Callback = function(st)
-        cFs(st, false)
-    end
+    Callback = function(st) cFs(st, false) end
 })
 
 tb:AddKeybind({
     Id = "farm_keybind", Title = "Farm Keybind", Default = "F", Mode = "Toggle",
-    Callback = function(s)
-        cFs(s, true)
-    end
+    Callback = function(s) cFs(s, true) end
 })
+
+task.spawn(function()
+    local lastChar = lp.Character
+    while true do
+        task.wait(0.5)
+        local char = lp.Character
+        if char ~= lastChar then
+            lastChar = char
+            if fr then
+                task.wait(1.5) 
+                dsR()
+                enR()  
+                task.spawn(sCV)
+            end
+        end
+    end
+end)
 
 local cf = w:AddTab({ Title = "Config", Icon = "save" })
 w:BuildConfigSection(cf)
@@ -539,5 +652,5 @@ lib:LoadAutoloadConfig()
 local cr = w:AddTab({ Title = "Credits", Icon = "info" })
 cr:AddParagraph({ Title = "Credits", Content = "Script by @xban11\nUI by @d.unne" })
 
-local st = w:AddTab({ Title = "Settings", Icon = "settings" })
-w:BuildInterfaceSection(st)
+local st_tab = w:AddTab({ Title = "Settings", Icon = "settings" })
+w:BuildInterfaceSection(st_tab)
