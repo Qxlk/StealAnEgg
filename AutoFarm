@@ -231,13 +231,17 @@ local function gSp()
     return tonumber(v) or 800
 end
 
-local function gHd()
-    if fastPickupEnabled then return 0 end
+local function gRh()
     if not hs then return 1.5 end
     local v
     if type(hs.Get) == "function" then v = hs.Get() end
     if not v and hs.Value then v = hs.Value end
     return tonumber(v) or 1.5
+end
+
+local function gHd()
+    if fastPickupEnabled then return 0 end
+    return gRh()
 end
 
 local function gAf()
@@ -454,15 +458,22 @@ local function dSe(ep)
     task.wait(0.2)
     if not fr then ia = false; return end
 
-    pcall(function()
-        keypress(0x45)
-        task.wait(gHd())
-        keyrelease(0x45)
-    end)
+    local maxAttempts = 3
+    for i = 1, maxAttempts do
+        if not fr or not ex(ep) then break end
+
+        pcall(function()
+            keypress(0x45)
+            local hTime = (i == maxAttempts and fastPickupEnabled) and gRh() or gHd()
+            task.wait(hTime)
+            keyrelease(0x45)
+        end)
+
+        task.wait(0.3)
+    end
 
     if not fr then ia = false; return end
 
-    task.wait(0.3)
     if not ex(ep) then
         gSz()
     else
@@ -485,15 +496,22 @@ local function dPe(ep)
     task.wait(0.2)
     if not fr or not pe then ia = false; return end
 
-    pcall(function()
-        keypress(0x45)
-        task.wait(gHd())
-        keyrelease(0x45)
-    end)
+    local maxAttempts = 3
+    for i = 1, maxAttempts do
+        if not fr or not pe or not ex(ep) then break end
+
+        pcall(function()
+            keypress(0x45)
+            local hTime = (i == maxAttempts and fastPickupEnabled) and gRh() or gHd()
+            task.wait(hTime)
+            keyrelease(0x45)
+        end)
+
+        task.wait(0.3)
+    end
 
     if not fr then ia = false; return end
 
-    task.wait(0.3)
     if not ex(ep) then
         local sl   = ep.Parent and ep.Parent.Parent
         local isSp = sl and sl:FindFirstChild("RareAreaEggHighlight") ~= nil
