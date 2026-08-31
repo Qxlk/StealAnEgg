@@ -17,20 +17,171 @@ local tmf              = false
 local ft               = nil    
 local gsz              = false  
 local ia               = false  
-local tr               = 6      
-local nc               = nil    
 
 local fb   = CFrame.new(541.99, 70.43, -368.12)   
 local mfp  = CFrame.new(544.35, 70.43, -413.09)   
 local SAFE = Vector3.new(528.04, 70.79, -364.74)  
 
-local lastTp       = 0
-
 local ragdollState  = false
 local storedJoints  = {}
 local camera        = workspace.CurrentCamera
 
-local function enR()
+local State = {
+    AutoFarm = false,
+    MaxSpeed = 800,
+    MinSpeed = 50,
+    DecelDistance = 40.0,
+    SafeFloorY = 70.0,
+    CruiseAltitude = 150.0,
+    SeparationLineX = 0.0,
+    WallClearanceY = 160.0
+}
+
+local AntiStuck = {
+    BlockedTime = 0,
+    LastPos = Vector3.zero
+}
+
+local function eSF(root)
+    if not root then return end
+    local pos = root.Position
+    if pos.Y < State.SafeFloorY then
+        root.CFrame = CFrame.new(pos.X, State.SafeFloorY, pos.Z)
+        local vel = root.AssemblyLinearVelocity
+        if vel.Y < 0 then
+            root.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+        end
+    end
+end
+
+local function gTW(targetPos, options)
+    options = options or {}
+    local maxSpeed = options.MaxSpeed or State.MaxSpeed
+    local minSpeed = options.MinSpeed or State.MinSpeed
+    local decelDist = options.DecelDist or State.DecelDistance
+    local arrivalRadius = options.ArrivalRadius or 4.5
+    local timeout = options.Timeout or 10.0
+    local isLanding = options.IsLanding or false
+
+    local startTime = os.clock()
+    local lastTick = startTime
+
+    while fr and State.AutoFarm do
+        local myChar = lp.Character
+        local myHum = myChar and myChar:FindFirstChild("Humanoid")
+        local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso"))
+
+        if not myRoot or not myHum or myHum.Health <= 30 then
+            dSR()
+            break
+        end
+
+        local curPos = myRoot.Position
+        local delta = targetPos - curPos
+        local dist = delta.Magnitude
+
+        if dist <= arrivalRadius or (os.clock() - startTime) > timeout then
+            myRoot.AssemblyLinearVelocity = Vector3.zero
+            break
+        end
+
+        local now = os.clock()
+        local dt = math.clamp(now - lastTick, 0.008, 0.05)
+        lastTick = now
+
+        if (curPos - AntiStuck.LastPos).Magnitude < 1.0 then
+            AntiStuck.BlockedTime = AntiStuck.BlockedTime + dt
+            if AntiStuck.BlockedTime >= 1.2 then
+                myRoot.CFrame = CFrame.new(curPos.X, curPos.Y + 20.0, curPos.Z)
+                myRoot.AssemblyLinearVelocity = Vector3.new(0, 90, 0)
+                AntiStuck.BlockedTime = 0
+            end
+        else
+            AntiStuck.BlockedTime = 0
+        end
+        AntiStuck.LastPos = curPos
+
+        local currentSpeed = maxSpeed
+        if isLanding or dist <= decelDist then
+            local alpha = math.clamp(dist / decelDist, 0.0, 1.0)
+            currentSpeed = minSpeed + (maxSpeed - minSpeed) * (alpha ^ 0.85)
+        end
+
+        local dir = delta.Unit
+        local vy = dir.Y * currentSpeed
+
+        if curPos.Y <= (State.SafeFloorY + 1.5) and vy < 0 then
+            vy = 0
+        end
+
+        myRoot.AssemblyLinearVelocity = Vector3.new(
+            dir.X * currentSpeed,
+            vy,
+            dir.Z * currentSpeed
+        )
+
+        task.wait(0.015)
+    end
+end
+
+local function fSR(targetPos, isLanding)
+    local myChar = lp.Character
+    local myHum = myChar and myChar:FindFirstChild("Humanoid")
+    local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso"))
+    if not myRoot or not myHum or myHum.Health <= 30 then
+        dSR()
+        return
+    end
+
+    local cur = myRoot.Position
+
+    local adaptiveY = State.CruiseAltitude
+    local xMin = math.min(cur.X, targetPos.X)
+    local xMax = math.max(cur.X, targetPos.X)
+    if xMin <= (State.SeparationLineX + 8) and xMax >= (State.SeparationLineX - 8) then
+        adaptiveY = math.max(adaptiveY, State.WallClearanceY)
+    end
+
+    local skyStart = Vector3.new(cur.X, adaptiveY, -364.0)
+    gTW(skyStart, { MaxSpeed = 400.0, DecelDist = 20.0, ArrivalRadius = 8.0, Timeout = 2.0 })
+    if not State.AutoFarm or not fr then return end
+
+    local skyTarget = Vector3.new(targetPos.X, adaptiveY, targetPos.Z)
+    gTW(skyTarget, { MaxSpeed = State.MaxSpeed, DecelDist = State.DecelDistance, ArrivalRadius = 14.0, Timeout = 6.0 })
+    if not State.AutoFarm or not fr then return end
+
+    local targetY = math.max(State.SafeFloorY + 0.5, targetPos.Y + 2.0)
+    gTW(Vector3.new(targetPos.X, targetY, targetPos.Z), { MaxSpeed = 300.0, MinSpeed = 30.0, DecelDist = 25.0, ArrivalRadius = 5.0, IsLanding = true, Timeout = 2.5 })
+end
+
+local zonesData = {
+    {minX = 553.42, maxX = 646.49, minZ = -433.38, maxZ = -295.05},
+    {minX = 653.01, maxX = 793.51, minZ = -433.38, maxZ = -295.05},
+    {minX = 796.48, maxX = 1005.04, minZ = -433.40, maxZ = -295.05},
+    {minX = 1008.56, maxX = 1240.12, minZ = -433.38, maxZ = -295.05},
+    {minX = 1244.13, maxX = 1564.18, minZ = -433.39, maxZ = -295.05},
+    {minX = 1568.33, maxX = 1949.58, minZ = -433.39, maxZ = -295.05},
+    {minX = 1953.30, maxX = 2378.73, minZ = -433.38, maxZ = -295.05},
+    {minX = 2382.87, maxX = 2884.09, minZ = -433.40, maxZ = -295.05},
+    {minX = 2888.03, maxX = 3523.51, minZ = -433.38, maxZ = -295.05},
+    {minX = 3527.67, maxX = 4263.53, minZ = -433.38, maxZ = -295.05},
+    {minX = 4268.09, maxX = 5123.06, minZ = -433.38, maxZ = -295.05},
+}
+
+local zoneNames = {"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano", "Abyss Ocean", "Prehistoric", "Cosmic", "Cherry Blossom", "Titan Temple"}
+
+local selectedZones = {}
+for i = 1, 11 do
+    selectedZones[i] = false
+end
+
+local function iZ(pos, zoneIdx)
+    local z = zonesData[zoneIdx]
+    if not z then return false end
+    return pos.X >= z.minX and pos.X <= z.maxX and pos.Z >= z.minZ and pos.Z <= z.maxZ
+end
+
+local function eR()
     local myChar = lp.Character
     if not myChar or not camera then return end
     storedJoints = {}
@@ -43,7 +194,7 @@ local function enR()
     ragdollState = true
 end
 
-local function dsR()
+local function dSR()
     for _, item in ipairs(storedJoints) do
         if item.joint and item.oldParent then
             pcall(function() item.joint.Parent = item.oldParent end)
@@ -64,38 +215,6 @@ local function sCV()
     for i = 1, 8 do
         mousescroll(-1)
         task.wait(0.04)
-    end
-end
-
-local function isH()
-    local char = lp.Character
-    if not char then return false end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    local lh   = char:FindFirstChild("LeftHand")
-    local rh   = char:FindFirstChild("RightHand")
-    if not (root and lh and rh) then return false end
-    local ly = (lh.Position - root.Position).Y
-    local ry = (rh.Position - root.Position).Y
-    return ly > 0 and ry > 0
-end
-
-local function isR()
-    local char = lp.Character
-    if not char then return false end
-    for _, v in ipairs(char:GetDescendants()) do
-        if v.Name:find("Ragdoll") then return true end
-    end
-    return false
-end
-
-local function dTp(times, delay)
-    times = times or 3
-    delay = delay or 0.03
-    local p = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-    if not p then return end
-    for i = 1, times do
-        p.CFrame = CFrame.new(SAFE.X, SAFE.Y, SAFE.Z)
-        task.wait(delay)
     end
 end
 
@@ -143,14 +262,46 @@ local w = lib:CreateWindow({
 
 local tb = w:AddTab({ Title = "Farm", Icon = "egg" })
 
-local ss = tb:AddSlider({
-    Id = "global_tween_speed", Title = "Movement Speed",
-    Min = 400, Max = 2000, Default = 800, Rounding = 0, Callback = function() end
+tb:AddDropdown({
+    Id = "zones_multidropdown",
+    Title = "Zones to Farm",
+    Values = zoneNames,
+    Multi = true,
+    Default = {},
+    Callback = function(v)
+        for i = 1, 11 do
+            selectedZones[i] = false
+        end
+        if type(v) == "table" then
+            for k, val in pairs(v) do
+                local zoneName = ""
+                local isChecked = true
+                
+                if type(k) == "string" then
+                    zoneName = k
+                    isChecked = (val == true)
+                elseif type(val) == "string" then
+                    zoneName = val
+                    isChecked = true
+                end
+                
+                if isChecked and zoneName ~= "" then
+                    for idx, name in ipairs(zoneNames) do
+                        if name == zoneName then
+                            selectedZones[idx] = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
 })
 
-local hs = tb:AddSlider({
-    Id = "global_hold_duration", Title = "Hold E Duration",
-    Min = 1.0, Max = 2.0, Default = 1.5, Rounding = 1, Callback = function() end
+local ss = tb:AddSlider({
+    Id = "global_tween_speed", Title = "Movement Speed",
+    Min = 400, Max = 1250, Default = 800, Rounding = 0, 
+    Callback = function(v) State.MaxSpeed = tonumber(v) or 800 end
 })
 
 local aft = tb:AddToggle({
@@ -161,7 +312,7 @@ local aft = tb:AddToggle({
 
 local pt = tb:AddToggle({
     Id = "parasite_toggle",
-    Title = "Farm Parasite Eggs",
+    Title = "Farm Parasite/Rare Eggs",
     Default = true,
     Callback = function(v) pe = v end
 })
@@ -175,7 +326,7 @@ local tmToggle = tb:AddToggle({
 
 local fastPickupEnabled = false
 
-local function pPr(prompt)
+local function pP(prompt)
     if not prompt then return end
     local addr = prompt.Address
     if not addr then return end
@@ -189,12 +340,12 @@ local function pPr(prompt)
     end
 end
 
-local function pAPs()
+local function pAP()
     for _, c in ipairs(workspace:GetChildren()) do
         if c.Name == "SmartPromptPart" then
             for _, p in ipairs(c:GetChildren()) do
                 if p.ClassName == "ProximityPrompt" then
-                    pcall(pPr, p)
+                    pcall(pP, p)
                 end
             end
         end
@@ -210,11 +361,11 @@ tb:AddToggle({
     Callback = function(v)
         fastPickupEnabled = v
         if v then
-            pAPs()
+            pAP()
             fastPickupThread = task.spawn(function()
                 while fastPickupEnabled do
                     task.wait(2.0)
-                    pAPs()
+                    pAP()
                 end
             end)
         else
@@ -223,164 +374,18 @@ tb:AddToggle({
     end
 })
 
-local function gSp()
-    if not ss then return 800 end
-    local v
-    if type(ss.Get) == "function" then v = ss.Get() end
-    if not v and ss.Value then v = ss.Value end
-    return tonumber(v) or 800
-end
-
-local function gRh()
-    if not hs then return 1.5 end
-    local v
-    if type(hs.Get) == "function" then v = hs.Get() end
-    if not v and hs.Value then v = hs.Value end
-    return tonumber(v) or 1.5
-end
-
-local function gHd()
+local function gH()
     if fastPickupEnabled then return 0 end
-    return gRh()
+    return 1.3
 end
 
-local function gAf()
+local function gA()
     if not aft then return false end
     if type(aft.Get) == "function" then return aft.Get() end
     return aft.Value == true
 end
 
-local function sNc()
-    if nc then nc:Disconnect() end
-    nc = rs.Stepped:Connect(function()
-        local ch = lp.Character
-        if ch then
-            for _, p in ipairs(ch:GetDescendants()) do
-                if p:IsA("BasePart") then p.CanCollide = false end
-            end
-        end
-    end)
-end
-
-local function eNc()
-    if nc then nc:Disconnect(); nc = nil end
-end
-
-local function gTr()
-    local t = {}
-    local d = ws:FindFirstChild("__DEBRIS")
-    if not d then return t end
-    for _, v in ipairs(d:GetChildren()) do
-        if v.Name == "PlayerTrap" and v:IsA("BasePart") then
-            table.insert(t, v.Position)
-        end
-    end
-    return t
-end
-
-local function gAp(f, to)
-    local t = gTr()
-    local dir = to - f
-    local dm = dir.Magnitude
-    if dm < 0.1 then return nil end
-    local dn = dir.Unit
-
-    for _, tp in ipairs(t) do
-        local tt = tp - f
-        local pr = tt:Dot(dn)
-        local cl = f + dn * math.clamp(pr, 0, dm)
-        local ds = (tp - cl).Magnitude
-        if ds <= tr then
-            local rt = Vector3.new(dn.Z, 0, -dn.X)
-            local oa = cl + rt * (tr + 3)
-            local ob = cl - rt * (tr + 3)
-            if (oa - tp).Magnitude > (ob - tp).Magnitude then
-                return CFrame.new(oa.X, f.Y, oa.Z)
-            else
-                return CFrame.new(ob.X, f.Y, ob.Z)
-            end
-        end
-    end
-    return nil
-end
-
-local function mv(tc, it, sr)
-    local ch = lp.Character
-    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-
-    sr = sr or function() return fr end
-
-    sNc()
-
-    while sr() do
-        if it and it() then
-            eNc()
-            return "INTERRUPTED"
-        end
-
-        ch  = lp.Character
-        hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-        if not hrp then break end
-
-        local csp = gSp()
-        if csp <= 0 then task.wait(0.02); continue end
-
-        local dst = (hrp.Position - tc.Position).Magnitude
-        if dst < 0.5 then hrp.CFrame = tc; break end
-
-        local dt = task.wait()
-        if not sr() then break end
-        dt  = tonumber(dt) or 0.016
-        csp = gSp()
-
-        local stp = csp * dt
-        if stp >= dst then
-            hrp.CFrame = tc; break
-        else
-            hrp.CFrame = hrp.CFrame:Lerp(tc, stp / dst)
-        end
-    end
-
-    eNc()
-    task.wait(0.1 + math.random() * 0.15)
-    return sr()
-end
-
-local function mvs(tc, it, sr)
-    local ch  = lp.Character
-    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-
-    local ap = gAp(hrp.Position, tc.Position)
-    if ap then
-        local ok = mv(ap, it, sr)
-        if not ok or ok == "INTERRUPTED" then return ok end
-        ch  = lp.Character
-        hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local ap2 = gAp(hrp.Position, tc.Position)
-            if ap2 then
-                local ok2 = mv(ap2, it, sr)
-                if not ok2 or ok2 == "INTERRUPTED" then return ok2 end
-            end
-        end
-    end
-
-    return mv(tc, it, sr)
-end
-
-local function gSz()
-    gsz = true
-    ia  = true
-
-    mv(fb, nil, function() return fr end)
-
-    gsz = false
-    ia  = false
-end
-
-local function gPe()
+local function gP()
     local sl = ws:FindFirstChild("AreaEggSlotsClient")
     if not sl then return nil end
     local ch  = lp.Character
@@ -406,7 +411,7 @@ local function gPe()
     return cp
 end
 
-local function gSe()
+local function gS()
     local sp  = Vector3.new(544.71, 70.43, -364.68)
     local fp  = nil
     local mxd = -1
@@ -429,7 +434,92 @@ local function gSe()
     return fp
 end
 
-local function gTP()
+local function eES(pl, zoneIdx)
+    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    local dist = hrp and (hrp.Position - pl.Position).Magnitude or 0
+    local posX = pl.Position.X
+
+    local size = pl.Size
+    local eggHeight = size.Y
+    local eggVolume = size.X * size.Y * size.Z
+
+    local slotName = ""
+    local curr = pl
+    while curr and curr ~= workspace do
+        slotName = slotName .. " " .. curr.Name
+        curr = curr.Parent
+    end
+    slotName = slotName:lower()
+
+    local isGiant = (eggHeight >= 5.0) or (eggVolume >= 120.0) or slotName:find("titan") or slotName:find("giant")
+
+    local sizeBonus = 0
+    if isGiant then
+        sizeBonus = 25000 + math.min(15000, eggVolume * 50)
+    end
+
+    local zoneBonus = zoneIdx * 100000
+    local score = zoneBonus + sizeBonus + (posX * 3.0) - (dist * 0.12)
+    return score
+end
+
+local function gBE()
+    if pe then
+        local pEgg = gP()
+        if pEgg then
+            return pEgg, "parasite"
+        end
+    end
+
+    local rareEgg = gS()
+    if rareEgg then
+        local inAnySelected = false
+        local anyZoneSelected = false
+        for i = 1, 11 do
+            if selectedZones[i] then
+                anyZoneSelected = true
+                if iZ(rareEgg.Position, i) then
+                    inAnySelected = true
+                    break
+                end
+            end
+        end
+        if not anyZoneSelected or inAnySelected then
+            return rareEgg, "rare"
+        end
+    end
+
+    local sl = ws:FindFirstChild("AreaEggSlotsClient")
+    if not sl then return nil, nil end
+
+    local bestEgg = nil
+    local highestScore = -math.huge
+
+    for i = 1, 11 do
+        if selectedZones[i] then
+            for _, s in ipairs(sl:GetChildren()) do
+                local pl = s:FindFirstChild("Plane") or s:FindFirstChildWhichIsA("BasePart", true)
+                if pl and pl:IsA("BasePart") and iZ(pl.Position, i) then
+                    if pl.Parent then
+                        local score = eES(pl, i)
+                        if score > highestScore then
+                            highestScore = score
+                            bestEgg = pl
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if bestEgg then
+        return bestEgg, "zone"
+    end
+
+    return nil, nil
+end
+
+local function gT()
     if not localPlot then return nil end
     local tmRender = ws:FindFirstChild("__ClientTreadmillRenders")
     if not tmRender then return nil end
@@ -438,7 +528,7 @@ local function gTP()
     return nil
 end
 
-local function eTP()
+local function eT()
     pcall(function()
         keypress(0x20); task.wait(0.15); keyrelease(0x20)
     end)
@@ -448,12 +538,20 @@ local function ex(ep)
     return ep and ep.Parent ~= nil
 end
 
-local function dSe(ep)
+local function gSZ()
+    gsz = true
+    ia  = true
+    fSR(fb.Position, true)
+    gsz = false
+    ia  = false
+end
+
+local function dSE(ep)
     if not fr then return end
     ia = true
 
-    local ok = mvs(ep.CFrame, nil, function() return fr end)
-    if not ok then ia = false; return end
+    fSR(ep.Position, true)
+    if not fr then ia = false; return end
 
     task.wait(0.2)
     if not fr then ia = false; return end
@@ -464,7 +562,7 @@ local function dSe(ep)
 
         pcall(function()
             keypress(0x45)
-            local hTime = (i == maxAttempts and fastPickupEnabled) and gRh() or gHd()
+            local hTime = gH()
             task.wait(hTime)
             keyrelease(0x45)
         end)
@@ -475,23 +573,18 @@ local function dSe(ep)
     if not fr then ia = false; return end
 
     if not ex(ep) then
-        gSz()
+        gSZ()
     else
         ia = false
     end
 end
 
-local function dPe(ep)
+local function dPE(ep)
     if not fr or not pe then return end
     ia = true
 
-    local ms = mvs(ep.CFrame,
-        function() return not gsz and (gSe() ~= nil) end,
-        function() return fr and pe end
-    )
-
-    if ms == "INTERRUPTED" then ia = false; return end
-    if not ms then ia = false; return end
+    fSR(ep.Position, true)
+    if not fr or not pe then ia = false; return end
 
     task.wait(0.2)
     if not fr or not pe then ia = false; return end
@@ -502,7 +595,7 @@ local function dPe(ep)
 
         pcall(function()
             keypress(0x45)
-            local hTime = (i == maxAttempts and fastPickupEnabled) and gRh() or gHd()
+            local hTime = gH()
             task.wait(hTime)
             keyrelease(0x45)
         end)
@@ -516,11 +609,11 @@ local function dPe(ep)
         local sl   = ep.Parent and ep.Parent.Parent
         local isSp = sl and sl:FindFirstChild("RareAreaEggHighlight") ~= nil
 
-        if isSp or not gAf() then
-            gSz()
+        if isSp or not gA() then
+            gSZ()
         else
-            local ok = mv(mfp, nil, function() return fr end)
-            if ok and fr then
+            fSR(mfp.Position, true)
+            if fr then
                 task.wait(0.5)
                 pcall(function()
                     keypress(0x45)
@@ -535,63 +628,46 @@ local function dPe(ep)
     end
 end
 
-local function sFl()
+local function sF()
     if ft then return end
     ft = task.spawn(function()
-        local lastSeState = false
-        local lastPeState = false
+        local lastEggState = false
 
-        while fr do
+        while fr and State.AutoFarm do
             if gsz or ia then task.wait(0.1); continue end
 
-            local act = false
-
-            local se = gSe()
-            if se then
-                act = true
-                if not lastSeState then
-                    lastSeState = true
+            local egg, eggType = gBE()
+            if egg then
+                if not lastEggState then
+                    lastEggState = true
                     task.wait(3.0)
-                    se = gSe()
+                    egg, eggType = gBE()
                 end
-                if se and fr then dSe(se) end
-            else
-                lastSeState = false
-            end
-
-            if not act and pe then
-                local pe_egg = gPe()
-                if pe_egg then
-                    act = true
-                    if not lastPeState then
-                        lastPeState = true
-                        task.wait(3.0)
-                        pe_egg = gPe()
+                
+                if egg and fr then
+                    if eggType == "parasite" then
+                        dPE(egg)
+                    else
+                        dSE(egg)
                     end
-                    if pe_egg and fr then dPe(pe_egg) end
-                else
-                    lastPeState = false
                 end
-            end
-
-            if not act then
+            else
+                lastEggState = false
                 if tmf and localPlot then
-                    local tmPart = gTP()
+                    local tmPart = gT()
                     if tmPart then
                         local ch  = lp.Character
                         local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
                         if hrp and (hrp.Position - tmPart.Position).Magnitude > 3 then
                             ia = true
-                            local res = mvs(tmPart.CFrame, function()
-                                return (gSe() ~= nil) or (pe and gPe() ~= nil)
-                            end, function() return fr end)
+                            fSR(tmPart.Position, true)
                             ia = false
-                            if res == "INTERRUPTED" then continue end
                         end
 
-                        while fr and tmf do
-                            if (gSe() ~= nil) or (pe and gPe() ~= nil) then
-                                eTP()
+                        while fr and State.AutoFarm and tmf do
+                            local e = gBE()
+                            if e ~= nil then
+                                eT()
                                 task.wait(0.2)
                                 break
                             end
@@ -606,16 +682,16 @@ local function sFl()
             end
         end
 
-        eNc()
         ft = nil
     end)
 end
 
 local mt
 
-local function cFs(st, ui)
+local function cF(st, ui)
     if fr == st then return end
     fr = st
+    State.AutoFarm = st
 
     if ui and mt then
         pcall(function()
@@ -626,24 +702,23 @@ local function cFs(st, ui)
 
     if st then
         lib:Notify({ Title = "Auto Farm", Content = "Auto Farm started!", Duration = 2 })
-        enR()  
+        eR()  
         task.spawn(sCV)
-        sFl()
+        sF()
     else
         lib:Notify({ Title = "Auto Farm", Content = "Auto Farm stopped!", Duration = 2 })
-        dsR() 
-        eNc()
+        dSR() 
     end
 end
 
 mt = tb:AddToggle({
     Id = "main_farm_toggle", Title = "Start Stop Auto Farm", Default = false,
-    Callback = function(st) cFs(st, false) end
+    Callback = function(st) cF(st, false) end
 })
 
 tb:AddKeybind({
     Id = "farm_keybind", Title = "Farm Keybind", Default = "F", Mode = "Toggle",
-    Callback = function(s) cFs(s, true) end
+    Callback = function(s) cF(s, true) end
 })
 
 task.spawn(function()
@@ -655,8 +730,8 @@ task.spawn(function()
             lastChar = char
             if fr then
                 task.wait(1.5) 
-                dsR()
-                enR()  
+                dSR()
+                eR()  
                 task.spawn(sCV)
             end
         end
