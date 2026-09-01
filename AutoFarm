@@ -13,6 +13,7 @@ local localPlot        = nil
 local health_offset    = 0x190
 local fr               = false  
 local pe               = true   
+local re               = true   
 local tmf              = false  
 local ft               = nil    
 local gsz              = false  
@@ -310,9 +311,16 @@ local aft = tb:AddToggle({
     Default = false, Callback = function() end
 })
 
+local rt = tb:AddToggle({
+    Id = "rare_toggle",
+    Title = "Farm Rare Eggs",
+    Default = true,
+    Callback = function(v) re = v end
+})
+
 local pt = tb:AddToggle({
     Id = "parasite_toggle",
-    Title = "Farm Parasite/Rare Eggs",
+    Title = "Farm Parasite Eggs",
     Default = true,
     Callback = function(v) pe = v end
 })
@@ -464,31 +472,32 @@ local function eES(pl, zoneIdx)
 end
 
 local function gBE()
+    if re then
+        local rareEgg = gS()
+        if rareEgg then
+            local inAnySelected = false
+            local anyZoneSelected = false
+            for i = 1, 11 do
+                if selectedZones[i] then
+                    anyZoneSelected = true
+                    if iZ(rareEgg.Position, i) then
+                        inAnySelected = true
+                        break
+                    end
+                end
+            end
+            if not anyZoneSelected or inAnySelected then
+                return rareEgg, "rare"
+            end
+        end
+    end
+
     if pe then
         local pEgg = gP()
         if pEgg then
             return pEgg, "parasite"
         end
     end
-
-    local rareEgg = gS()
-    if rareEgg then
-        local inAnySelected = false
-        local anyZoneSelected = false
-        for i = 1, 11 do
-            if selectedZones[i] then
-                anyZoneSelected = true
-                if iZ(rareEgg.Position, i) then
-                    inAnySelected = true
-                    break
-                end
-            end
-        end
-        if not anyZoneSelected or inAnySelected then
-            return rareEgg, "rare"
-        end
-    end
-
     local sl = ws:FindFirstChild("AreaEggSlotsClient")
     if not sl then return nil, nil end
 
@@ -523,7 +532,9 @@ local function gT()
     if not localPlot then return nil end
     local tmRender = ws:FindFirstChild("__ClientTreadmillRenders")
     if not tmRender then return nil end
-    local render = tmRender:FindFirstChild("TreadmillRender_" .. tostring(localPlot.Name))
+    local plotNum = tostring(localPlot.Name):match("%d+")
+    if not plotNum then return nil end
+    local render = tmRender:FindFirstChild("TreadmillRender_" .. plotNum)
     if render then return render:FindFirstChild("BoundingBoxPart") end
     return nil
 end
