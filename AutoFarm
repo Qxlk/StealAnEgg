@@ -475,20 +475,7 @@ local function gBE()
     if re then
         local rareEgg = gS()
         if rareEgg then
-            local inAnySelected = false
-            local anyZoneSelected = false
-            for i = 1, 11 do
-                if selectedZones[i] then
-                    anyZoneSelected = true
-                    if iZ(rareEgg.Position, i) then
-                        inAnySelected = true
-                        break
-                    end
-                end
-            end
-            if not anyZoneSelected or inAnySelected then
-                return rareEgg, "rare"
-            end
+            return rareEgg, "rare"
         end
     end
 
@@ -498,6 +485,7 @@ local function gBE()
             return pEgg, "parasite"
         end
     end
+
     local sl = ws:FindFirstChild("AreaEggSlotsClient")
     if not sl then return nil, nil end
 
