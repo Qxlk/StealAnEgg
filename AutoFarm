@@ -21,7 +21,7 @@ local ia               = false
 
 local fb   = CFrame.new(541.99, 70.43, -368.12)   
 local mfp  = CFrame.new(544.35, 70.43, -413.09)   
-local SAFE = Vector3.new(528.04, 70.79, -364.74)  
+local SAFE = Vector3.new(528.04, 70.79, -364.74)   
 
 local ragdollState  = false
 local storedJoints  = {}
@@ -394,24 +394,39 @@ local function gA()
 end
 
 local function gP()
-    local sl = ws:FindFirstChild("AreaEggSlotsClient")
-    if not sl then return nil end
-    local ch  = lp.Character
-    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return nil end
-
     local cp = nil
     local md = math.huge
+    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 
-    for _, s in ipairs(sl:GetChildren()) do
-        local pv = s:FindFirstChild("MonsterParasiteVisual")
-        if pv then
-            local pl = pv:FindFirstChild("Plane")
-            if pl and pl:IsA("BasePart") then
-                local dst = (hrp.Position - pl.Position).Magnitude
-                if dst < md then
-                    md = dst
-                    cp = pl
+    local sl = ws:FindFirstChild("AreaEggSlotsClient")
+    if sl then
+        for _, s in ipairs(sl:GetChildren()) do
+            local pv = s:FindFirstChild("MonsterParasiteVisual")
+            if pv then
+                local pl = pv:FindFirstChild("Plane")
+                if pl and pl:IsA("BasePart") then
+                    if hrp then
+                        local dst = (hrp.Position - pl.Position).Magnitude
+                        if dst < md then
+                            md = dst
+                            cp = pl
+                        end
+                    else
+                        cp = pl
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if not cp then
+        for _, obj in ipairs(ws:GetChildren()) do
+            local pv = obj:FindFirstChild("MonsterParasiteVisual", true)
+            if pv then
+                local pl = pv:FindFirstChild("Plane") or obj:FindFirstChildWhichIsA("BasePart", true)
+                if pl and pl:IsA("BasePart") then
+                    return pl
                 end
             end
         end
@@ -420,8 +435,8 @@ local function gP()
 end
 
 local function gS()
-    local sp  = Vector3.new(544.71, 70.43, -364.68)
-    local fp  = nil
+    local sp = Vector3.new(544.71, 70.43, -364.68)
+    local fp = nil
     local mxd = -1
 
     local sl = ws:FindFirstChild("AreaEggSlotsClient")
@@ -433,12 +448,24 @@ local function gS()
                     local dst = (pl.Position - sp).Magnitude
                     if dst > mxd then
                         mxd = dst
-                        fp  = pl
+                        fp = pl
                     end
                 end
             end
         end
     end
+
+    if not fp then
+        for _, obj in ipairs(ws:GetChildren()) do
+            if obj:FindFirstChild("RareAreaEggHighlight", true) then
+                local pl = obj:FindFirstChild("Plane") or obj:FindFirstChildWhichIsA("BasePart", true)
+                if pl and pl:IsA("BasePart") then
+                    return pl
+                end
+            end
+        end
+    end
+
     return fp
 end
 
@@ -487,21 +514,40 @@ local function gBE()
     end
 
     local sl = ws:FindFirstChild("AreaEggSlotsClient")
-    if not sl then return nil, nil end
-
     local bestEgg = nil
     local highestScore = -math.huge
 
-    for i = 1, 11 do
-        if selectedZones[i] then
-            for _, s in ipairs(sl:GetChildren()) do
-                local pl = s:FindFirstChild("Plane") or s:FindFirstChildWhichIsA("BasePart", true)
-                if pl and pl:IsA("BasePart") and iZ(pl.Position, i) then
-                    if pl.Parent then
-                        local score = eES(pl, i)
-                        if score > highestScore then
-                            highestScore = score
-                            bestEgg = pl
+    if sl then
+        for i = 1, 11 do
+            if selectedZones[i] then
+                for _, s in ipairs(sl:GetChildren()) do
+                    local pl = s:FindFirstChild("Plane") or s:FindFirstChildWhichIsA("BasePart", true)
+                    if pl and pl:IsA("BasePart") and iZ(pl.Position, i) then
+                        if pl.Parent then
+                            local score = eES(pl, i)
+                            if score > highestScore then
+                                highestScore = score
+                                bestEgg = pl
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    for _, obj in ipairs(ws:GetChildren()) do
+        if obj:FindFirstChild("Hitbox", true) then
+            local pl = obj:FindFirstChild("Plane") or obj:FindFirstChildWhichIsA("BasePart", true)
+            if pl and pl:IsA("BasePart") then
+                for i = 1, 11 do
+                    if selectedZones[i] and iZ(pl.Position, i) then
+                        if pl.Parent then
+                            local score = eES(pl, i) + 50000
+                            if score > highestScore then
+                                highestScore = score
+                                bestEgg = pl
+                            end
                         end
                     end
                 end
@@ -619,7 +665,7 @@ local function dPE(ep)
                     task.wait(0.25)
                     keyrelease(0x45)
                 end)
-                task.wait(1.0) 
+                task.wait(1.0)
             end
             ia = false
         end
