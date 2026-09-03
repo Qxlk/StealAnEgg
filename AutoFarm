@@ -613,12 +613,13 @@ local function dPE(ep)
         else
             fSR(mfp.Position, true)
             if fr then
-                task.wait(0.5)
+                task.wait(1.5) 
                 pcall(function()
                     keypress(0x45)
-                    task.wait(2.0)
+                    task.wait(0.25)
                     keyrelease(0x45)
                 end)
+                task.wait(1.0) 
             end
             ia = false
         end
@@ -637,6 +638,10 @@ local function sF()
 
             local egg, eggType = gBE()
             if egg then
+                if not ragdollState then
+                    eR()
+                end
+
                 if not lastEggState then
                     lastEggState = true
                     task.wait(3.0)
@@ -659,6 +664,9 @@ local function sF()
                         local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
                         if hrp and (hrp.Position - tmPart.Position).Magnitude > 3 then
                             ia = true
+                            if ragdollState then
+                                dSR()
+                            end
                             fSR(tmPart.Position, true)
                             ia = false
                         end
