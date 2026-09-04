@@ -9,7 +9,20 @@ local uis  = game:GetService("UserInputService")
 while not plrs.LocalPlayer do task.wait(0.1) end
 local lp = plrs.LocalPlayer
 
-local localPlot        = nil
+rs.Stepped:Connect(function()
+    if fr and State.AutoFarm then
+        local char = lp.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+end)
+
+local localPlot         = nil
 local health_offset    = 0x190
 local fr               = false  
 local pe               = true   
@@ -20,9 +33,9 @@ local gsz              = false
 local ia               = false  
 local wasFarming       = false  
 
-local fb     = CFrame.new(541.99, 70.43, -368.12)   
-local mfp    = CFrame.new(544.35, 70.43, -413.09)   
-local tpSpot = Vector3.new(544.62, 70.43, -364.48) 
+local fb     = CFrame.new(541.99, 70.43, -368.12)    
+local mfp    = CFrame.new(544.35, 70.43, -413.09)    
+local tpSpot = Vector3.new(544.62, 70.43, -364.48)   
 
 local ragdollState  = false
 local storedJoints  = {}
@@ -36,7 +49,9 @@ local State = {
     SafeFloorY = 70.0,
     CruiseAltitude = 150.0,
     SeparationLineX = 0.0,
-    WallClearanceY = 160.0
+    WallClearanceY = 160.0,
+    TeleportCount = 10,
+    TeleportDelay = 10
 }
 
 local AntiStuck = {
@@ -103,6 +118,7 @@ local function gTW(targetPos, options)
 
     local startTime = os.clock()
     local lastTick = startTime
+    local arrivalFrames = 0
 
     while fr and State.AutoFarm do
         local myChar = lp.Character
@@ -123,9 +139,18 @@ local function gTW(targetPos, options)
         local delta = targetPos - curPos
         local dist = delta.Magnitude
 
-        if dist <= arrivalRadius or (os.clock() - startTime) > timeout then
-            myRoot.AssemblyLinearVelocity = Vector3.zero
-            break
+        if dist <= arrivalRadius then
+            arrivalFrames = arrivalFrames + 1
+            if arrivalFrames >= 3 or (os.clock() - startTime) > timeout then
+                myRoot.AssemblyLinearVelocity = Vector3.zero
+                break
+            end
+        else
+            arrivalFrames = 0
+            if (os.clock() - startTime) > timeout then
+                myRoot.AssemblyLinearVelocity = Vector3.zero
+                break
+            end
         end
 
         local now = os.clock()
@@ -167,6 +192,19 @@ local function gTW(targetPos, options)
     end
 end
 
+local function gT()
+    if not localPlot then return nil end
+    local tmBottom = localPlot:FindFirstChild("TreadmillBottom")
+    if tmBottom then
+        if tmBottom:IsA("BasePart") then
+            return tmBottom
+        else
+            return tmBottom:FindFirstChildWhichIsA("BasePart", true)
+        end
+    end
+    return nil
+end
+
 local function fSR(targetPos, isLanding)
     local myChar = lp.Character
     local myHum = myChar and myChar:FindFirstChild("Humanoid")
@@ -183,6 +221,26 @@ local function fSR(targetPos, isLanding)
 
     local cur = myRoot.Position
 
+    local tmPart = gT()
+    if tmPart then
+        local flatTfPos = Vector3.new(tmPart.Position.X, 0, tmPart.Position.Z)
+        local flatCurPos = Vector3.new(cur.X, 0, cur.Z)
+        local tmDist = (flatCurPos - flatTfPos).Magnitude
+        if tmDist < 14.0 then
+            local escapeDir = (flatCurPos - flatTfPos)
+            if escapeDir.Magnitude == 0 then
+                escapeDir = Vector3.new(1, 0, 0)
+            else
+                escapeDir = escapeDir.Unit
+            end
+            local escapePos = cur + (escapeDir * 10.0)
+            gTW(escapePos, { MaxSpeed = 350.0, DecelDist = 5.0, ArrivalRadius = 2.0, Timeout = 1.0 })
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                cur = lp.Character.HumanoidRootPart.Position
+            end
+        end
+    end
+
     local adaptiveY = State.CruiseAltitude
     local xMin = math.min(cur.X, targetPos.X)
     local xMax = math.max(cur.X, targetPos.X)
@@ -190,16 +248,27 @@ local function fSR(targetPos, isLanding)
         adaptiveY = math.max(adaptiveY, State.WallClearanceY)
     end
 
-    local skyStart = Vector3.new(cur.X, adaptiveY, -364.0)
-    gTW(skyStart, { MaxSpeed = 400.0, DecelDist = 20.0, ArrivalRadius = 8.0, Timeout = 2.0 })
+    local skyStart = Vector3.new(cur.X, adaptiveY, cur.Z)
+    gTW(skyStart, { MaxSpeed = 400.0, DecelDist = 10.0, ArrivalRadius = 6.0, Timeout = 2.0 })
     if not State.AutoFarm or not fr then return end
+
+    local checkRoot = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    if checkRoot then
+        local checkStart = os.clock()
+        while os.clock() - checkStart < 1.0 do
+            if math.abs(checkRoot.Position.Y - adaptiveY) < 15.0 then
+                break
+            end
+            task.wait(0.05)
+        end
+    end
 
     local skyTarget = Vector3.new(targetPos.X, adaptiveY, targetPos.Z)
     gTW(skyTarget, { MaxSpeed = State.MaxSpeed, DecelDist = State.DecelDistance, ArrivalRadius = 14.0, Timeout = 6.0 })
     if not State.AutoFarm or not fr then return end
 
     local targetY = math.max(State.SafeFloorY + 0.5, targetPos.Y + 2.0)
-    gTW(Vector3.new(targetPos.X, targetY, targetPos.Z), { MaxSpeed = 300.0, MinSpeed = 30.0, DecelDist = 25.0, ArrivalRadius = 5.0, IsLanding = true, Timeout = 2.5 })
+    gTW(Vector3.new(targetPos.X, targetY, targetPos.Z), { MaxSpeed = 300.0, MinSpeed = 30.0, DecelDist = 25.0, ArrivalRadius = 5.0, IsLanding = true, Timeout = 5.0 })
 end
 
 local zonesData = {
@@ -267,7 +336,7 @@ task.spawn(function()
 
     local shortestDist = math.huge
     for _, plot in ipairs(plots:GetChildren()) do
-        local spawnPart = plot:FindFirstChild("SpawnLocation") or plot:FindFirstChildWhichIsA("BasePart", true)
+        local spawnPart = plot:FindFirstChild("SpawnPoint") or plot:FindFirstChild("SpawnLocation") or plot:FindFirstChildWhichIsA("BasePart", true)
         if spawnPart then
             local dist = (hrp.Position - spawnPart.Position).Magnitude
             if dist < shortestDist then
@@ -329,6 +398,18 @@ local ss = tb:AddSlider({
     Callback = function(v) State.MaxSpeed = tonumber(v) or 800 end
 })
 
+tb:AddSlider({
+    Id = "teleport_count_slider", Title = "Teleport Count",
+    Min = 1, Max = 100, Default = 10, Rounding = 0,
+    Callback = function(v) State.TeleportCount = tonumber(v) or 10 end
+})
+
+tb:AddSlider({
+    Id = "teleport_delay_slider", Title = "Teleport Delay (ms)",
+    Min = 10, Max = 100, Default = 10, Rounding = 0,
+    Callback = function(v) State.TeleportDelay = tonumber(v) or 10 end
+})
+
 local aft = tb:AddToggle({
     Id = "auto_feed_monster_toggle",
     Title = "Auto Feed Monster",
@@ -338,14 +419,14 @@ local aft = tb:AddToggle({
 local rt = tb:AddToggle({
     Id = "rare_toggle",
     Title = "Farm Rare Eggs",
-    Default = false,
+    Default = true,
     Callback = function(v) re = v end
 })
 
 local pt = tb:AddToggle({
     Id = "parasite_toggle",
     Title = "Farm Parasite Eggs",
-    Default = false,
+    Default = true,
     Callback = function(v) pe = v end
 })
 
@@ -586,17 +667,6 @@ local function gBE()
     return nil, nil
 end
 
-local function gT()
-    if not localPlot then return nil end
-    local tmRender = ws:FindFirstChild("__ClientTreadmillRenders")
-    if not tmRender then return nil end
-    local plotNum = tostring(localPlot.Name):match("%d+")
-    if not plotNum then return nil end
-    local render = tmRender:FindFirstChild("TreadmillRender_" .. plotNum)
-    if render then return render:FindFirstChild("BoundingBoxPart") end
-    return nil
-end
-
 local function eT()
     pcall(function()
         keypress(0x20); task.wait(0.15); keyrelease(0x20)
@@ -618,14 +688,17 @@ local function gSZ(targetCF)
         dSR() 
         local targetTp = CFrame.new(tpSpot.X, tpSpot.Y, tpSpot.Z)
 
-        for i = 1, 10 do
+        local tpCount = State.TeleportCount or 10
+        local tpDelay = (State.TeleportDelay or 10) / 1000
+
+        for i = 1, tpCount do
             if not fr then break end
             hrp.CFrame = targetTp
-            task.wait(0.01)
+            task.wait(tpDelay)
         end
     end
 
-    task.wait(0.2)
+    task.wait(0.5)
     eR()
 
     local dest = fb
@@ -643,6 +716,8 @@ local function gSZ(targetCF)
             keyrelease(0x45)
         end)
         task.wait(1.0) 
+    else
+        task.wait(1.0)
     end
     
     gsz = false
@@ -870,13 +945,11 @@ task.spawn(function()
         task.wait(0.3)
         local curChar = lp.Character
         if curChar and curChar ~= lastTrackedChar then
-            lastTrackedChar = curChar
+            lastTrackedChar = curChar            
             if wasFarming then
                 task.wait(2.5)
-                
                 local hrp = curChar:WaitForChild("HumanoidRootPart", 10)
                 local hum = curChar:WaitForChild("Humanoid", 10)
-                
                 if hrp and hum then
                     dSR()
                     task.wait(0.1)
