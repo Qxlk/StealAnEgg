@@ -338,14 +338,14 @@ local aft = tb:AddToggle({
 local rt = tb:AddToggle({
     Id = "rare_toggle",
     Title = "Farm Rare Eggs",
-    Default = true,
+    Default = false,
     Callback = function(v) re = v end
 })
 
 local pt = tb:AddToggle({
     Id = "parasite_toggle",
     Title = "Farm Parasite Eggs",
-    Default = true,
+    Default = false,
     Callback = function(v) pe = v end
 })
 
