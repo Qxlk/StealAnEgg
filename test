@@ -18,6 +18,7 @@ local tmf              = false
 local ft               = nil    
 local gsz              = false  
 local ia               = false  
+local wasFarming       = false  
 
 local fb     = CFrame.new(541.99, 70.43, -368.12)   
 local mfp    = CFrame.new(544.35, 70.43, -413.09)   
@@ -42,6 +43,42 @@ local AntiStuck = {
     BlockedTime = 0,
     LastPos = Vector3.zero
 }
+
+local function eR()
+    local myChar = lp.Character
+    if not myChar or not camera then return end
+    
+    local startTime = os.clock()
+    while os.clock() - startTime < 2.0 do
+        storedJoints = {}
+        for _, d in ipairs(myChar:GetDescendants()) do
+            if d:IsA("Motor6D") and d.Name ~= "RootJoint" and d.Name ~= "Root" then
+                table.insert(storedJoints, { joint = d, oldParent = d.Parent })
+                d.Parent = camera
+            end
+        end
+        if #storedJoints > 0 then
+            break
+        end
+        task.wait(0.05)
+    end
+
+    if #storedJoints > 0 then
+        ragdollState = true
+    else
+        ragdollState = false
+    end
+end
+
+local function dSR()
+    for _, item in ipairs(storedJoints) do
+        if item.joint and item.oldParent then
+            pcall(function() item.joint.Parent = item.oldParent end)
+        end
+    end
+    storedJoints = {}
+    ragdollState = false
+end
 
 local function eSF(root)
     if not root then return end
@@ -74,6 +111,11 @@ local function gTW(targetPos, options)
 
         if not myRoot or not myHum or myHum.Health <= 30 then
             dSR()
+            task.wait(0.05)
+            pcall(function() myChar:BreakJoints() end)
+            fr = false
+            State.AutoFarm = false
+            wasFarming = true
             break
         end
 
@@ -131,6 +173,11 @@ local function fSR(targetPos, isLanding)
     local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso"))
     if not myRoot or not myHum or myHum.Health <= 30 then
         dSR()
+        task.wait(0.05)
+        pcall(function() myChar:BreakJoints() end)
+        fr = false
+        State.AutoFarm = false
+        wasFarming = true
         return
     end
 
@@ -180,29 +227,6 @@ local function iZ(pos, zoneIdx)
     local z = zonesData[zoneIdx]
     if not z then return false end
     return pos.X >= z.minX and pos.X <= z.maxX and pos.Z >= z.minZ and pos.Z <= z.maxZ
-end
-
-local function eR()
-    local myChar = lp.Character
-    if not myChar or not camera then return end
-    storedJoints = {}
-    for _, d in ipairs(myChar:GetDescendants()) do
-        if d:IsA("Motor6D") and d.Name ~= "RootJoint" and d.Name ~= "Root" then
-            table.insert(storedJoints, { joint = d, oldParent = d.Parent })
-            d.Parent = camera
-        end
-    end
-    ragdollState = true
-end
-
-local function dSR()
-    for _, item in ipairs(storedJoints) do
-        if item.joint and item.oldParent then
-            pcall(function() item.joint.Parent = item.oldParent end)
-        end
-    end
-    storedJoints = {}
-    ragdollState = false
 end
 
 local function sCV()
@@ -583,7 +607,6 @@ local function ex(ep)
     return ep and ep.Parent ~= nil
 end
 
--- Fonction gSZ : Garde le ragdoll OFF pendant les TP et rollback, puis le réactive 0.1s avant le tween
 local function gSZ(targetCF)
     gsz = true
     ia  = true
@@ -592,35 +615,26 @@ local function gSZ(targetCF)
     local hrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
 
     if hrp then
-        dSR() -- Désactive le ragdoll pour les TP
-        
-        local savedCFrame = hrp.CFrame
+        dSR() 
         local targetTp = CFrame.new(tpSpot.X, tpSpot.Y, tpSpot.Z)
 
-        -- 10 TP vers la position exacte
-        for i = 1, 2 do
+        for i = 1, 10 do
             if not fr then break end
             hrp.CFrame = targetTp
-            task.wait(0.2)
-        end
-
-        -- Rollback à la position de l'œuf (le ragdoll reste OFF ici)
-        if fr then
-            hrp.CFrame = savedCFrame
-            task.wait(0.1)
+            task.wait(0.01)
         end
     end
 
-    -- Attend 0.1s puis réactive le ragdoll juste avant de remonter dans le ciel et tween
-    task.wait(0.1)
+    task.wait(0.2)
     eR()
 
-    local dest = targetCF or fb
+    local dest = fb
+    if targetCF == mfp and gA() then
+        dest = mfp
+    end
     
-    -- Remonte et tween vers la destination (fb ou mfp)
     fSR(dest.Position, true)
 
-    -- Si la destination est le monstre, on effectue l'action pour le nourrir
     if dest == mfp and fr then
         task.wait(1.5) 
         pcall(function()
@@ -785,11 +799,13 @@ local function cF(st, ui)
     end
 
     if st then
+        wasFarming = true
         lib:Notify({ Title = "Auto Farm", Content = "Auto Farm started!", Duration = 2 })
         eR()  
         task.spawn(sCV)
         sF()
     else
+        wasFarming = false
         lib:Notify({ Title = "Auto Farm", Content = "Auto Farm stopped!", Duration = 2 })
         dSR() 
     end
@@ -805,18 +821,74 @@ tb:AddKeybind({
     Callback = function(s) cF(s, true) end
 })
 
+local function setupCharacterDeath(char)
+    local hum = char:WaitForChild("Humanoid", 10)
+    if not hum then return end
+
+    task.spawn(function()
+        while char and char.Parent and hum and hum.Parent do
+            if hum.MaxHealth > 0 and (hum.Health / hum.MaxHealth) <= 0.25 then
+                if ragdollState then
+                    dSR()
+                    task.wait(0.05)
+                end
+                pcall(function()
+                    char:BreakJoints()
+                end)
+                if fr then
+                    fr = false
+                    State.AutoFarm = false
+                    wasFarming = true
+                end
+                break
+            end
+            task.wait(0.15)
+        end
+    end)
+
+    if hum.Died then
+        pcall(function()
+            hum.Died:Connect(function()
+                if fr then
+                    wasFarming = true
+                    fr = false
+                    State.AutoFarm = false
+                    dSR() 
+                end
+            end)
+        end)
+    end
+end
+
+if lp.Character then
+    setupCharacterDeath(lp.Character)
+end
+
 task.spawn(function()
-    local lastChar = lp.Character
+    local lastTrackedChar = lp.Character
     while true do
-        task.wait(0.5)
-        local char = lp.Character
-        if char ~= lastChar then
-            lastChar = char
-            if fr then
-                task.wait(1.5) 
-                dSR()
-                eR()  
-                task.spawn(sCV)
+        task.wait(0.3)
+        local curChar = lp.Character
+        if curChar and curChar ~= lastTrackedChar then
+            lastTrackedChar = curChar
+            if wasFarming then
+                task.wait(2.5)
+                
+                local hrp = curChar:WaitForChild("HumanoidRootPart", 10)
+                local hum = curChar:WaitForChild("Humanoid", 10)
+                
+                if hrp and hum then
+                    dSR()
+                    task.wait(0.1)
+                    eR()
+                    task.spawn(sCV)
+                    fr = true
+                    State.AutoFarm = true
+                    sF()
+                    lib:Notify({ Title = "Auto Farm", Content = "Resumed after respawn!", Duration = 2 })
+                else
+                end
+            else
             end
         end
     end
