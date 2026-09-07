@@ -471,7 +471,7 @@ tb:AddSlider({
     Id = "max_speed_slider",
     Title = "Tween Max Speed",
     Min = 50,
-    Max = 1000,
+    Max = 500,
     Default = St.MaxSpeed,
     Increment = 10,
     Callback = function(v)
