@@ -53,11 +53,11 @@ local function isInSpawnZone(pos)
     return pos.X >= 365.0 and pos.X <= 552.0 and pos.Z >= -582.0 and pos.Z <= -146.0
 end
 
--- local bProgress = {
---     stage = "crystal",
---     crystalIndex = 1,
---     clicks = 0
--- }
+local bProgress = {
+    stage = "crystal",
+    crystalIndex = 1,
+    clicks = 0
+}
 
 local function getTraps()
     local debris = ws:FindFirstChild("__DEBRIS")
@@ -451,18 +451,32 @@ tb:AddToggle({
     Callback = function(v) re = v end
 })
 
--- tb:AddToggle({
---     Id = "auto_boss_toggle",
---     Title = "Auto Boss",
---     Default = false,
---     Callback = function(v) ab = v end
--- })
+--[[
+tb:AddToggle({
+    Id = "auto_boss_toggle",
+    Title = "Auto Boss",
+    Default = false,
+    Callback = function(v) ab = v end
+})
+    --]]
 
 tb:AddToggle({
     Id = "treadmill_farm_toggle",
     Title = "Treadmill Farm (When No Eggs)",
     Default = false,
     Callback = function(v) tmf = v end
+})
+
+tb:AddSlider({
+    Id = "max_speed_slider",
+    Title = "Tween Max Speed",
+    Min = 50,
+    Max = 1000,
+    Default = St.MaxSpeed,
+    Increment = 10,
+    Callback = function(v)
+        St.MaxSpeed = v
+    end
 })
 
 local fPE = false
@@ -592,12 +606,14 @@ local function gBE()
         end
     end
 
--- if ab then
---     local bossPart = ws:FindFirstChild("BossArenaTeleport") and ws.BossArenaTeleport:FindFirstChild("Part")
---     if bossPart and bossPart:IsA("BasePart") then
---         return bossPart, "boss"
---     end
--- end
+    --[[
+    if ab then
+        local bossPart = ws:FindFirstChild("BossArenaTeleport") and ws.BossArenaTeleport:FindFirstChild("Part")
+        if bossPart and bossPart:IsA("BasePart") then
+            return bossPart, "boss"
+        end
+    end
+    --]]
 
     local sl = ws:FindFirstChild("AreaEggSlotsClient")
     local bestEgg = nil
@@ -726,194 +742,236 @@ local function dSE(ep)
 
     fSR(safePoint, true, { AvoidTraps = false })
 
+    task.wait(0.8)
+
     ia = false
 end
 
--- local function isBossDead()
---     local pg = lp:FindFirstChild("PlayerGui")
---     if not pg then return false end
---     local ui = pg:FindFirstChild("BossFightUI")
---     if not ui then return false end
---     local hpBar = ui:FindFirstChild("BossHPBar")
---     if not hpBar then return false end
---     local holder = hpBar:FindFirstChild("BarHolder")
---     if not holder then return false end
---     local amt = holder:FindFirstChild("HealthAmount")
---     if amt and (amt:IsA("TextLabel") or amt:IsA("TextBox")) then
---         local text = amt.Text or ""
---         if text:match("^0%s*/") or text:find("0 /") then
---             return true
---         end
---     end
---     return false
--- end
+--[[
+local function isBossDead()
+    local pg = lp:FindFirstChild("PlayerGui")
+    if not pg then return false end
+    local ui = pg:FindFirstChild("BossFightUI")
+    if not ui then return false end
+    local hpBar = ui:FindFirstChild("BossHPBar")
+    if not hpBar then return false end
+    local holder = hpBar:FindFirstChild("BarHolder")
+    if not holder then return false end
+    local amt = holder:FindFirstChild("HealthAmount")
+    if amt and (amt:IsA("TextLabel") or amt:IsA("TextBox")) then
+        local text = amt.Text or ""
+        if text:match("^0%s*/") or text:find("0 /") then
+            return true
+        end
+    end
+    return false
+end
 
--- local function getArmHitbox(arenaObj)
---     if not arenaObj then return nil end
---     local arm = arenaObj:FindFirstChild("SlamArmHitbox", true)
---     if arm then
---         if arm:IsA("BasePart") then
---             return arm
---         elseif arm:IsA("Model") then
---             return arm.PrimaryPart or arm:FindFirstChildWhichIsA("BasePart", true)
---         end
---     end
---     return nil
--- end
+local function getArmTarget(arena)
+    if not arena then return nil end
+    local targets = {
+        arena:FindFirstChild("SlamArmHitbox", true),
+        arena:FindFirstChild("SlamIndicator", true),
+        arena:FindFirstChild("SlamRestHitbox", true),
+    }
+    for _, t in ipairs(targets) do
+        if t then
+            local part = t:IsA("BasePart") and t or (t.PrimaryPart or t:FindFirstChildWhichIsA("BasePart", true))
+            if part then
+                print("[Boss] Arm target trouvé:", t:GetFullName(), "pos:", part.Position)
+                return part
+            end
+        end
+    end
+    print("[Boss] Aucun arm target trouvé dans BossArena")
+    return nil
+end
 
--- local function runBossSequence()
---     local bossTeleportPart = ws:FindFirstChild("BossArenaTeleport") and ws.BossArenaTeleport:FindFirstChild("Part")
---     if bossTeleportPart and bossTeleportPart:IsA("BasePart") then
---         ia = true
---         fSR(bossTeleportPart.Position, true, { AvoidTraps = true })
---         ia = false
---     end
+local function getCrystalHitbox(arena, index)
+    if not arena then return nil end
+    local towers = arena:FindFirstChild("CrystalTowers")
+    if not towers then print("[Boss] CrystalTowers introuvable"); return nil end
+    local tower = towers:FindFirstChild(tostring(index))
+    if not tower then print("[Boss] Tower " .. index .. " introuvable"); return nil end
+    local hitbox = tower:FindFirstChild("Hitbox") or tower:FindFirstChildWhichIsA("BasePart", true)
+    if hitbox then
+        print("[Boss] Crystal " .. index .. " hitbox:", hitbox:GetFullName(), "pos:", hitbox.Position)
+    else
+        print("[Boss] Crystal " .. index .. " hitbox introuvable")
+    end
+    return hitbox
+end
 
---     if bProgress.stage == "crystal" and bProgress.crystalIndex == 1 and bProgress.clicks == 0 then
---         while fr and ab do
---             if isBossDead() then break end
---             local pg = lp:FindFirstChild("PlayerGui")
---             local countdownUI = pg and pg:FindFirstChild("BossSpawningCountdown")
---             local mainContent = countdownUI and countdownUI:FindFirstChild("Main") and countdownUI.Main:FindFirstChild("Content")
---             if mainContent and (mainContent:IsA("TextLabel") or mainContent:IsA("TextBox")) then
---                 local text = mainContent.Text or ""
---                 if text:find("Abyss Overlord is spawning in: 1") or text:find("spawning in: 1") then
---                     break
---                 end
---             end
---             task.wait(0.2)
---         end
---         task.wait(1.5)
---     end
+local function isBossDead()
+    local pg = lp:FindFirstChild("PlayerGui")
+    local ui = pg and pg:FindFirstChild("BossFightUI")
+    if not ui then return false end
+    local bar = ui:FindFirstChild("BossHPBar", true)
+    local hp  = bar and bar:FindFirstChild("HealthAmount", true)
+    if not hp then return false end
+    local cur = hp.Text:match("^(%d+)%s*/")
+    return cur and tonumber(cur) == 0
+end
 
---     while fr and ab and St.AutoFarm do
---         if not fr or not ab then break end
+local function equipSword()
+    print("[Boss] Equip sword (touche 1)")
+    keypress(0x31); task.wait(0.1); keyrelease(0x31)
+    task.wait(0.3)
+end
 
---         if isBossDead() then
---             lib:Notify({ Title = "Auto Boss", Content = "Boss defeated (HP at 0)! Resetting progress.", Duration = 3 })
---             bProgress = { stage = "crystal", crystalIndex = 1, clicks = 0 }
---             task.wait(2.0)
---             break
---         end
+local function clickOnce()
+    pcall(function()
+        keypress(0x01); task.wait(0.05); keyrelease(0x01)
+    end)
+end
 
---         local arena = ws:FindFirstChild("BossArena")
---         if not arena then
---             task.wait(0.5)
---             continue
---         end
+local function runBossSequence()
+    print("[Boss] Séquence boss démarrée")
+    ia = true
+    startNoclip()
 
---         if bProgress.stage == "crystal" then
---             if isBossDead() then break end
+    local tp = ws:FindFirstChild("BossArenaTeleport")
+    tp = tp and tp:FindFirstChild("Part")
+    if tp and tp:IsA("BasePart") then
+        print("[Boss] TP vers BossArenaTeleport:", tp.Position)
+        gTW(tp.Position, { MaxSpeed = St.MaxSpeed, DecelDist = 20.0, ArrivalRadius = 5.0 })
+    else
+        print("[Boss] BossArenaTeleport.Part introuvable")
+    end
 
---             local towers = arena:FindFirstChild("CrystalTowers")
---             if not towers then
---                 task.wait(0.5)
---                 continue
---             end
+    print("[Boss] Attente 25s spawn boss...")
+    task.wait(25)
 
---             for i = bProgress.crystalIndex, 4 do
---                 if not fr or not ab or isBossDead() then break end
---                 bProgress.crystalIndex = i
+    local bProgress = { stage = "crystal", crystalIndex = 1, clicks = 0 }
 
---                 local tower = towers:FindFirstChild(tostring(i))
---                 local hitbox = tower and tower:FindFirstChild("Hitbox")
+    while fr and ab and St.AutoFarm do
+        if not fr or not ab then break end
 
---                 if hitbox and hitbox:IsA("BasePart") then
---                     ia = true
---                     fSR(hitbox.Position, true, { AvoidTraps = true })
---                     ia = false
+        if isBossDead() then
+            print("[Boss] Boss mort ! Reset progression")
+            bProgress = { stage = "crystal", crystalIndex = 1, clicks = 0 }
+            task.wait(2.0)
+            break
+        end
 
---                     while fr and ab and ex(hitbox) do
---                         if isBossDead() then break end
---                         if bProgress.clicks >= 25 then
---                             break
---                         end
+        local arena = ws:FindFirstChild("BossArena")
+        if not arena then
+            print("[Boss] BossArena introuvable, attente...")
+            task.wait(0.5)
+            continue
+        end
 
---                         for c = bProgress.clicks + 1, 25 do
---                             if not fr or not ab or not ex(hitbox) or isBossDead() then break end
---                             pcall(function()
---                                 if mouse1click then
---                                     mouse1click()
---                                 else
---                                     keypress(0x01)
---                                     task.wait(0.05)
---                                     keyrelease(0x01)
---                                 end
---                             end)
---                             bProgress.clicks = c
---                             task.wait(0.15)
---                         end
+        if bProgress.stage == "crystal" then
+            print("[Boss] Stage: Crystal", bProgress.crystalIndex)
 
---                         if bProgress.clicks >= 25 then
---                             break
---                         end
---                     end
+            local towers = arena:FindFirstChild("CrystalTowers")
+            if not towers then task.wait(0.5); continue end
 
---                     if isBossDead() then break end
+            local allDone = true
+            for i = bProgress.crystalIndex, 4 do
+                if not fr or not ab or isBossDead() then break end
+                bProgress.crystalIndex = i
 
---                     if bProgress.clicks >= 25 then
---                         bProgress.clicks = 0
---                     else
---                         break
---                     end
---                 else
---                     task.wait(0.2)
---                 end
---             end
+                local hitbox = getCrystalHitbox(arena, i)
+                if hitbox and hitbox:IsA("BasePart") and ex(hitbox) then
+                    allDone = false
+                    print("[Boss] Tween vers crystal", i, "pos:", hitbox.Position)
+                    gTW(hitbox.Position, { MaxSpeed = St.MaxSpeed, DecelDist = 20.0, ArrivalRadius = 5.0 })
 
---             if isBossDead() then
---                 bProgress = { stage = "crystal", crystalIndex = 1, clicks = 0 }
---                 break
---             end
+                    dSR()
+                    print("[Boss] Ragdoll OFF, equip sword")
+                    equipSword()
 
---             if bProgress.crystalIndex >= 4 and bProgress.clicks == 0 then
---                 bProgress.stage = "arm"
---             end
+                    for c = 1, 35 do
+                        if not fr or not ab or isBossDead() or not ex(hitbox) then break end
+                        print("[Boss] Crystal", i, "coup", c, "/35")
+                        clickOnce()
+                        task.wait(0.12)
+                    end
 
---         elseif bProgress.stage == "arm" then
---             if isBossDead() then
---                 bProgress = { stage = "crystal", crystalIndex = 1, clicks = 0 }
---                 break
---             end
+                    print("[Boss] Ragdoll ON avant prochain tween")
+                    eR()
+                    bProgress.clicks = 0
 
---             local armHitbox = nil
---             while fr and ab and not isBossDead() do
---                 local currentArena = ws:FindFirstChild("BossArena")
---                 if currentArena then
---                     armHitbox = getArmHitbox(currentArena)
---                     if armHitbox and armHitbox:IsA("BasePart") then
---                         break
---                     end
---                 end
---                 task.wait(0.2)
---             end
+                    if isBossDead() then break end
+                else
+                    print("[Boss] Crystal", i, "absent ou déjà détruit")
+                end
+            end
 
---             if not fr or not ab or isBossDead() then break end
+            if isBossDead() then
+                bProgress = { stage = "crystal", crystalIndex = 1, clicks = 0 }
+                break
+            end
 
---             if armHitbox and armHitbox:IsA("BasePart") then
---                 ia = true
---                 fSR(armHitbox.Position, true, { AvoidTraps = true })
---                 ia = false
+            if allDone or bProgress.crystalIndex >= 4 then
+                print("[Boss] Tous les crystaux faits → stage arm")
+                bProgress.stage = "arm"
+                bProgress.crystalIndex = 1
+            end
 
---                 while fr and ab and ex(armHitbox) do
---                     if isBossDead() then break end
---                     pcall(function()
---                         if mouse1click then
---                             mouse1click()
---                         else
---                             keypress(0x01)
---                             task.wait(0.05)
---                             keyrelease(0x01)
---                         end
---                     end)
---                     task.wait(0.15)
---                 end
---             end
---         end
+        elseif bProgress.stage == "arm" then
+            print("[Boss] Stage: Arm - recherche cible...")
 
---         task.wait(0.2)
---     end
--- end
+            local armHitbox = nil
+            local searchStart = os.clock()
+            while fr and ab and not isBossDead() do
+                local cur = ws:FindFirstChild("BossArena")
+                if cur then
+                    armHitbox = getArmTarget(cur)
+                    if armHitbox then break end
+                end
+                if os.clock() - searchStart > 10 then
+                    print("[Boss] Arm timeout après 10s")
+                    break
+                end
+                task.wait(0.2)
+            end
+
+            if not fr or not ab or isBossDead() then break end
+
+            if armHitbox then
+                print("[Boss] Tween vers arm:", armHitbox.Position)
+                gTW(armHitbox.Position, { MaxSpeed = St.MaxSpeed, DecelDist = 20.0, ArrivalRadius = 5.0 })
+
+                dSR()
+                print("[Boss] Ragdoll OFF, equip sword pour arm")
+                equipSword()
+
+                while fr and ab and ex(armHitbox) and not isBossDead() do
+                    print("[Boss] Frappe arm")
+                    clickOnce()
+                    task.wait(0.12)
+                end
+
+                print("[Boss] Ragdoll ON après arm")
+                eR()
+
+                if isBossDead() then
+                    print("[Boss] Boss mort après arm")
+                    bProgress = { stage = "crystal", crystalIndex = 1, clicks = 0 }
+                    break
+                end
+
+                print("[Boss] Retour stage crystal")
+                bProgress.stage = "crystal"
+                bProgress.crystalIndex = 1
+                bProgress.clicks = 0
+            else
+                print("[Boss] Arm introuvable")
+                task.wait(0.5)
+            end
+        end
+
+        task.wait(0.2)
+    end
+
+    print("[Boss] Séquence terminée")
+    stopNoclip()
+    ia = false
+end
+]]--
+
 
 sF = function(skipDelay)
     if ft then return end
@@ -935,10 +993,12 @@ sF = function(skipDelay)
                     eR()
                 end
 
---                 if eggType == "boss" then
---                     runBossSequence()
---                     break
---                 end
+                --[[
+                if eggType == "boss" then
+                    runBossSequence()
+                    break
+                end
+                ]]--
 
                 if not lES then
                     lES = true
