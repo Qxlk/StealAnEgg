@@ -290,22 +290,27 @@ fSR = function(targetPos, isLanding, options)
 
     local tmPart = gT()
     if tmPart then
-        local flatTfPos = Vector3.new(tmPart.Position.X, 0, tmPart.Position.Z)
-        local flatCurPos = Vector3.new(cur.X, 0, cur.Z)
-        local tmDist = (flatCurPos - flatTfPos).Magnitude
-        if tmDist < 14.0 then
-            local escapeDir = (flatCurPos - flatTfPos)
-            if escapeDir.Magnitude == 0 then
-                escapeDir = Vector3.new(1, 0, 0)
-            else
-                escapeDir = escapeDir.Unit
-            end
-            local escapePos = cur + (escapeDir * 10.0)
-            gTW(escapePos, { MaxSpeed = 350.0, DecelDist = 5.0, ArrivalRadius = 2.0, AvoidTraps = options.AvoidTraps })
-        end
-    end
+        ia = true
+        if rS then dSR() end
+    
+        local elevatedY = math.max(hrp.Position.Y + 45, 115.0)
+        local upPos = Vector3.new(hrp.Position.X, elevatedY, hrp.Position.Z)
+        gTW(upPos, { MaxSpeed = 450.0, DecelDist = 10.0, ArrivalRadius = 3.0 })
 
-    gTW(targetPos, { MaxSpeed = St.MaxSpeed, DecelDist = St.DecelDistance, ArrivalRadius = 3.0, IsLanding = isLanding, AvoidTraps = options.AvoidTraps })
+        local targetElevated = Vector3.new(tmPart.Position.X, elevatedY, tmPart.Position.Z)
+        gTW(targetElevated, { MaxSpeed = St.MaxSpeed, DecelDist = St.DecelDistance, ArrivalRadius = 4.0 })
+
+        local dropAbove = Vector3.new(tmPart.Position.X, tmPart.Position.Y + 18.0, tmPart.Position.Z)
+        gTW(dropAbove, { MaxSpeed = St.MaxSpeed, DecelDist = 10.0, ArrivalRadius = 3.0, AvoidTraps = false })
+
+        if hrp then
+            hrp.AssemblyLinearVelocity = Vector3.new(0, -5, 0)
+        end
+        task.wait(0.5)
+
+        dSR()
+        ia = false
+    end
 end
 
 local function mTS()
@@ -335,10 +340,22 @@ local function initialSkyMove()
     local upPos = Vector3.new(cur.X, elevatedY, cur.Z)
     gTW(upPos, { MaxSpeed = 450.0, DecelDist = 10.0, ArrivalRadius = 3.0 })
 
-    local targetElevated = Vector3.new(sMT.X, elevatedY, sMT.Z)
+    local tmPart = gT()
+    local targetX = tmPart and tmPart.Position.X or sMT.X
+    local targetZ = tmPart and tmPart.Position.Z or sMT.Z
+    local targetY = tmPart and tmPart.Position.Y or sMT.Y
+
+    local targetElevated = Vector3.new(targetX, elevatedY, targetZ)
     gTW(targetElevated, { MaxSpeed = St.MaxSpeed, DecelDist = St.DecelDistance, ArrivalRadius = 4.0 })
 
-    fSR(sMT, true)
+    local dropAbove = Vector3.new(targetX, targetY + 18.0, targetZ)
+    gTW(dropAbove, { MaxSpeed = St.MaxSpeed, DecelDist = 10.0, ArrivalRadius = 3.0, AvoidTraps = false, IsLanding = true })
+
+    if hrp then
+        hrp.AssemblyLinearVelocity = Vector3.new(0, -5, 0)
+    end
+    task.wait(0.5)
+
     ia = false
 end
 
@@ -475,7 +492,7 @@ tb:AddSlider({
     Id = "max_speed_slider",
     Title = "Tween Max Speed",
     Min = 50,
-    Max = 1000,
+    Max = 500,
     Default = St.MaxSpeed,
     Increment = 10,
     Callback = function(v)
