@@ -13,7 +13,6 @@ local lPlt        = nil
 local hOff        = 0x190
 local fr          = false  
 local re          = true   
-local ab          = false  
 local tmf         = false  
 local ft          = nil    
 local gsz         = false  
@@ -52,12 +51,6 @@ local aS = {
 local function isInSpawnZone(pos)
     return pos.X >= 365.0 and pos.X <= 552.0 and pos.Z >= -582.0 and pos.Z <= -146.0
 end
-
-local bProgress = {
-    stage = "crystal",
-    crystalIndex = 1,
-    clicks = 0
-}
 
 local function getTraps()
     local debris = ws:FindFirstChild("__DEBRIS")
@@ -140,18 +133,6 @@ local function dSR()
     end
     sJ = {}
     rS = false
-end
-
-local function eSF(root)
-    if not root then return end
-    local pos = root.Position
-    if pos.Y < St.SafeFloorY then
-        root.CFrame = CFrame.new(pos.X, St.SafeFloorY, pos.Z)
-        local vel = root.AssemblyLinearVelocity
-        if vel.Y < 0 then
-            root.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
-        end
-    end
 end
 
 local function gTW(targetPos, options)
@@ -335,10 +316,22 @@ local function initialSkyMove()
     local upPos = Vector3.new(cur.X, elevatedY, cur.Z)
     gTW(upPos, { MaxSpeed = 450.0, DecelDist = 10.0, ArrivalRadius = 3.0 })
 
-    local targetElevated = Vector3.new(sMT.X, elevatedY, sMT.Z)
+    local tmPart = gT()
+    local targetX = tmPart and tmPart.Position.X or sMT.X
+    local targetZ = tmPart and tmPart.Position.Z or sMT.Z
+    local targetY = tmPart and tmPart.Position.Y or sMT.Y
+
+    local targetElevated = Vector3.new(targetX, elevatedY, targetZ)
     gTW(targetElevated, { MaxSpeed = St.MaxSpeed, DecelDist = St.DecelDistance, ArrivalRadius = 4.0 })
 
-    fSR(sMT, true)
+    local dropAbove = Vector3.new(targetX, targetY + 8.0, targetZ)
+    gTW(dropAbove, { MaxSpeed = St.MaxSpeed, DecelDist = 10.0, ArrivalRadius = 3.0, AvoidTraps = false })
+
+    if hrp then
+        hrp.AssemblyLinearVelocity = Vector3.new(0, -5, 0)
+    end
+    task.wait(0.5)
+
     ia = false
 end
 
@@ -456,14 +449,6 @@ tb:AddToggle({
     Callback = function(v) re = v end
 })
 
---[[
-tb:AddToggle({
-    Id = "auto_boss_toggle",
-    Title = "Auto Boss",
-    Default = false,
-    Callback = function(v) ab = v end
-})
---]]
 tb:AddToggle({
     Id = "treadmill_farm_toggle",
     Title = "Treadmill Farm (When No Eggs)",
@@ -475,7 +460,7 @@ tb:AddSlider({
     Id = "max_speed_slider",
     Title = "Tween Max Speed",
     Min = 50,
-    Max = 1000,
+    Max = 500,
     Default = St.MaxSpeed,
     Increment = 10,
     Callback = function(v)
@@ -669,29 +654,6 @@ local function ex(ep)
     return ep and ep.Parent ~= nil
 end
 
-local function fRes()
-    local char = lp.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.Address then
-        memory_write("float", hum.Address + hOff, -10)
-    end
-end
-
-local function iBHB()
-    local char = lp.Character
-    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    local vel = hrp.AssemblyLinearVelocity
-    return Vector3.new(vel.X, 0, vel.Z).Magnitude > 60
-end
-
-local function wFR(oldChar)
-    while lp.Character == oldChar or not lp.Character do task.wait(0.05) end
-    local hrp = lp.Character:WaitForChild("HumanoidRootPart", 10)
-    if hrp then task.wait(1.0) end
-end
-
 local function dSE(ep)
     if not fr then return end
     ia = true
@@ -764,13 +726,14 @@ sF = function(skipDelay)
                     local targetElevated = Vector3.new(tmPart.Position.X, elevatedY, tmPart.Position.Z)
                     gTW(targetElevated, { MaxSpeed = St.MaxSpeed, DecelDist = St.DecelDistance, ArrivalRadius = 4.0 })
 
-                    local dropAbove = Vector3.new(tmPart.Position.X, tmPart.Position.Y + 35.0, tmPart.Position.Z)
+                    local dropAbove = Vector3.new(tmPart.Position.X, tmPart.Position.Y + 8.0, tmPart.Position.Z)
                     gTW(dropAbove, { MaxSpeed = St.MaxSpeed, DecelDist = 10.0, ArrivalRadius = 3.0, AvoidTraps = false })
-                    gTW(tmPart.Position, { MaxSpeed = St.MaxSpeed, DecelDist = 5.0, ArrivalRadius = 2.0, IsLanding = true, AvoidTraps = false })
 
                     if hrp then
-                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, -5, 0)
                     end
+                    task.wait(0.5)
+
                     dSR()
                     ia = false
                 end
@@ -808,13 +771,21 @@ sF = function(skipDelay)
                             ia = true
                             if rS then dSR() end
                             
-                            local abovePos = Vector3.new(tmPart.Position.X, tmPart.Position.Y + 35.0, tmPart.Position.Z)
-                            gTW(abovePos, { MaxSpeed = St.MaxSpeed, DecelDist = 10.0, ArrivalRadius = 3.0, AvoidTraps = false })
-                            gTW(tmPart.Position, { MaxSpeed = St.MaxSpeed, DecelDist = 5.0, ArrivalRadius = 2.0, IsLanding = true, AvoidTraps = false })
-                            
+                            local elevatedY = math.max(hrp.Position.Y + 45, 115.0)
+                            local upPos = Vector3.new(hrp.Position.X, elevatedY, hrp.Position.Z)
+                            gTW(upPos, { MaxSpeed = St.MaxSpeed, DecelDist = 10.0, ArrivalRadius = 3.0, AvoidTraps = false })
+
+                            local targetElevated = Vector3.new(tmPart.Position.X, elevatedY, tmPart.Position.Z)
+                            gTW(targetElevated, { MaxSpeed = St.MaxSpeed, DecelDist = St.DecelDistance, ArrivalRadius = 4.0 })
+
+                            local dropAbove = Vector3.new(tmPart.Position.X, tmPart.Position.Y + 8.0, tmPart.Position.Z)
+                            gTW(dropAbove, { MaxSpeed = St.MaxSpeed, DecelDist = 10.0, ArrivalRadius = 3.0, AvoidTraps = false })
+
                             if hrp then
-                                hrp.AssemblyLinearVelocity = Vector3.zero
+                                hrp.AssemblyLinearVelocity = Vector3.new(0, -5, 0)
                             end
+                            task.wait(0.5)
+
                             dSR() 
                             ia = false
                         end
